@@ -11,4 +11,6 @@ jobs:
     steps:
       - name: Trigger Vercel Function
         run: |
-          curl -X POST ${{ secrets.VERCEL_FUNCTION_URL }} 
+          curl -X POST ${{ secrets.VERCEL_FUNCTION_URL }} \
+            -H "Content-Type: application/json" \
+            -d '{"trigger":"github-action"}'

@@ -3,35 +3,12 @@ import nodemailer from 'nodemailer';
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { loadConfig } from './config';
 import { AnimeFile, ApiResponse } from './types';
-import * as fs from 'fs';
-import * as path from 'path';
 
-const LAST_CHECK_FILE = path.join(process.cwd(), 'last_check.txt');
 const CHECK_INTERVAL = 5 * 60 * 1000; // 5分钟检查一次
 
-async function getLastCheckTime(): Promise<Date> {
-    try {
-        if (fs.existsSync(LAST_CHECK_FILE)) {
-            const timestamp = fs.readFileSync(LAST_CHECK_FILE, 'utf-8').trim();
-            const date = new Date(timestamp);
-            if (isNaN(date.getTime())) {
-                console.error('无效的时间戳格式:', timestamp);
-                return new Date(Date.now() - 24 * 60 * 60 * 1000);
-            }
-            return date;
-        }
-    } catch (error) {
-        console.error('读取上次检查时间时出错:', error);
-    }
-    return new Date(Date.now() - 24 * 60 * 60 * 1000); // 默认24小时前
-}
-
-async function updateLastCheckTime(): Promise<void> {
-    try {
-        fs.writeFileSync(LAST_CHECK_FILE, new Date().toISOString());
-    } catch (error) {
-        console.error('Error updating last check time:', error);
-    }
+async function getCheckTime(): Promise<Date> {
+    // 检查最近30分钟的更新
+    return new Date(Date.now() - 30 * 60 * 1000);
 }
 
 async function fetchAnimeList(config: ReturnType<typeof loadConfig>): Promise<ApiResponse> {
@@ -98,23 +75,52 @@ async function sendNotification(
         await transporter.verify();
         console.log('SMTP连接验证成功');
 
-        const htmlContent = animeFiles.map(file => {
+        const htmlContent = `
+            <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
+                    动画更新通知
+                </h2>
+                <p style="color: #7f8c8d; margin-bottom: 20px;">
+                    发现 ${animeFiles.length} 个新更新
+                </p>
+                ${animeFiles.map(file => {
             const downloadUrl = `${config.api.baseUrl}/${config.api.pathPrefix}/${file.name}`;
             return `
-                <div>
-                    <p>动画名称: ${file.name}</p>
-                    <p>下载链接: <a href="${downloadUrl}">${downloadUrl}</a></p>
-                    <p>发布时间: ${new Date(file.modifiedTime).toLocaleString()}</p>
+                        <div style="background: #f8f9fa; border-radius: 5px; padding: 15px; margin-bottom: 15px;">
+                            <h3 style="color: #2c3e50; margin: 0 0 10px 0;">
+                                ${file.name.replace(/\[.*?\]/g, '').trim()}
+                            </h3>
+                            <p style="color: #34495e; margin: 5px 0;">
+                                <strong>文件大小:</strong> ${(parseInt(file.size) / (1024 * 1024)).toFixed(2)} MB
+                            </p>
+                            <p style="color: #34495e; margin: 5px 0;">
+                                <strong>发布时间:</strong> ${new Date(file.modifiedTime).toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            })}
+                            </p>
+                            <a href="${downloadUrl}" 
+                               style="display: inline-block; background: #3498db; color: white; padding: 8px 15px; 
+                                      text-decoration: none; border-radius: 3px; margin-top: 10px;">
+                                下载
+                            </a>
+                        </div>
+                    `;
+        }).join('')}
+                <div style="color: #7f8c8d; font-size: 12px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                    此邮件由自动系统发送，请勿直接回复
                 </div>
-                <hr/>
-            `;
-        }).join('');
+            </div>
+        `;
 
         console.log('正在发送邮件...');
         const info = await transporter.sendMail({
             from: config.mail.from,
             to: config.mail.to,
-            subject: '新动画更新通知',
+            subject: `发现 ${animeFiles.length} 个动画更新`,
             html: htmlContent
         });
         console.log('邮件发送成功:', info.messageId);
@@ -126,7 +132,7 @@ async function sendNotification(
                 stack: error.stack
             });
         }
-        throw error; // 重新抛出错误，让上层函数知道发送失败
+        throw error;
     }
 }
 
@@ -140,16 +146,16 @@ async function checkAnimeUpdates() {
             smtpPort: config.smtp.port
         });
 
-        const lastCheckTime = await getLastCheckTime();
-        console.log('上次检查时间:', lastCheckTime.toLocaleString());
+        const checkTime = await getCheckTime();
+        console.log('检查时间范围:', checkTime.toLocaleString(), '之后的更新');
 
         const animeList = await fetchAnimeList(config);
         const newAnimeFiles = animeList.files.filter(file => {
-            const isAfterLastCheck = new Date(file.modifiedTime) > lastCheckTime;
+            const isAfterCheckTime = new Date(file.modifiedTime) > checkTime;
             const matchesWatchList = config.animeNames.some(animeName =>
                 file.name.toLowerCase().includes(animeName.toLowerCase())
             );
-            return isAfterLastCheck && matchesWatchList;
+            return isAfterCheckTime && matchesWatchList;
         });
 
         console.log('筛选结果:', {
@@ -165,9 +171,6 @@ async function checkAnimeUpdates() {
         } else {
             console.log('没有发现新的更新');
         }
-
-        await updateLastCheckTime();
-        console.log('已更新检查时间');
     } catch (error) {
         console.error('检查更新时发生错误:', error);
         if (error instanceof Error) {
@@ -188,6 +191,14 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Vercel Serverless Function
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+    // 只处理 POST 请求，避免探活触发更新检查
+    if (req.method !== 'POST') {
+        return res.status(405).json({
+            success: false,
+            message: '只支持 POST 请求'
+        });
+    }
+
     try {
         await checkAnimeUpdates();
         res.status(200).json({
