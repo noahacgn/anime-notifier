@@ -37,11 +37,11 @@ async function updateLastCheckTime(): Promise<void> {
 async function fetchAnimeList(config: ReturnType<typeof loadConfig>): Promise<ApiResponse> {
     console.log('正在获取动画列表...');
     console.log('API地址:', `${config.api.baseUrl}/${config.api.pathPrefix}/`);
-    console.log('代理配置:', config.httpProxy);
+    console.log('代理配置:', process.env.NODE_ENV === 'development' ? config.httpProxy : '不使用代理');
 
     try {
         const axiosConfig = {
-            proxy: config.httpProxy ? {
+            proxy: process.env.NODE_ENV === 'development' ? {
                 host: '127.0.0.1',
                 port: 7890,
                 protocol: 'http'
