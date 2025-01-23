@@ -1,0 +1,14 @@
+name: Scheduled Anime Check
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # 每30分钟运行一次
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  check-anime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Function
+        run: |
+          curl -X POST ${{ secrets.VERCEL_FUNCTION_URL }} 

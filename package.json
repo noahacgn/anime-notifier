@@ -1,0 +1,32 @@
+{
+  "name": "anime-update-notifier",
+  "version": "1.0.0",
+  "description": "A service to check anime updates and send notifications",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "cross-env NODE_ENV=production node dist/index.js",
+    "dev": "cross-env NODE_ENV=development ts-node src/index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "anime",
+    "notification",
+    "vercel"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^20.0.0",
+    "@vercel/node": "^3.0.0",
+    "axios": "^1.6.0",
+    "cross-env": "^7.0.3",
+    "dotenv": "^16.0.0",
+    "nodemailer": "^6.9.0",
+    "typescript": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^6.4.0",
+    "ts-node": "^10.9.0"
+  }
+}
