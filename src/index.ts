@@ -191,8 +191,17 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Vercel Serverless Function
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+    console.log('收到请求:', {
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        body: req.body,
+        time: new Date().toISOString()
+    });
+
     // 只处理 POST 请求，避免探活触发更新检查
     if (req.method !== 'POST') {
+        console.log('非POST请求，拒绝处理');
         return res.status(405).json({
             success: false,
             message: '只支持 POST 请求'
@@ -200,16 +209,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
+        console.log('=== 开始执行检查任务 ===');
         await checkAnimeUpdates();
-        res.status(200).json({
+        console.log('=== 检查任务执行完成 ===');
+
+        const response = {
             success: true,
-            message: '检查完成'
-        });
+            message: '检查完成',
+            timestamp: new Date().toISOString()
+        };
+        console.log('返回响应:', response);
+        res.status(200).json(response);
     } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({
+        console.error('执行过程中发生错误:', error);
+        if (error instanceof Error) {
+            console.error('错误详情:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+                time: new Date().toISOString()
+            });
+        }
+        const errorResponse = {
             success: false,
-            message: error instanceof Error ? error.message : '未知错误'
-        });
+            message: error instanceof Error ? error.message : '未知错误',
+            timestamp: new Date().toISOString()
+        };
+        console.log('返回错误响应:', errorResponse);
+        res.status(500).json(errorResponse);
     }
 } 
