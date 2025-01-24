@@ -4,8 +4,6 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { loadConfig } from './config';
 import { AnimeFile, ApiResponse } from './types';
 
-const CHECK_INTERVAL = 5 * 60 * 1000; // 5分钟检查一次
-
 // 时区相关的工具函数
 function convertToBeijingTime(date: Date): Date {
     // 不需要加8小时，因为 API 返回的已经是北京时间
@@ -22,27 +20,6 @@ async function getCheckTime(): Promise<Date> {
     const now = new Date();
     // 检查最近30分钟的更新
     return new Date(now.getTime() - 30 * 60 * 1000);
-}
-
-// 定时任务相关
-let checkInterval: NodeJS.Timeout | null = null;
-
-function startScheduledCheck() {
-    if (checkInterval) {
-        clearInterval(checkInterval);
-    }
-
-    // 立即执行一次
-    checkAnimeUpdates().catch(error => {
-        console.error('定时任务执行失败:', error);
-    });
-
-    // 设置定时任务，每30分钟执行一次
-    checkInterval = setInterval(() => {
-        checkAnimeUpdates().catch(error => {
-            console.error('定时任务执行失败:', error);
-        });
-    }, 30 * 60 * 1000);
 }
 
 async function fetchAnimeList(config: ReturnType<typeof loadConfig>): Promise<ApiResponse> {
@@ -233,38 +210,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         time: new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
     });
 
-    // 启动定时任务
-    if (!checkInterval) {
-        console.log('启动定时任务...');
-        startScheduledCheck();
-        console.log('定时任务已启动');
+    // 只处理 POST 请求
+    if (req.method !== 'POST') {
+        return res.status(405).json({
+            success: false,
+            message: '只支持 POST 请求'
+        });
     }
 
-    // 如果是 POST 请求，立即执行一次检查
-    if (req.method === 'POST') {
-        try {
-            console.log('=== 开始执行检查任务 ===');
-            await checkAnimeUpdates();
-            console.log('=== 检查任务执行完成 ===');
-        } catch (error) {
-            console.error('执行过程中发生错误:', error);
-            if (error instanceof Error) {
-                console.error('错误详情:', {
-                    name: error.name,
-                    message: error.message,
-                    stack: error.stack
-                });
-            }
-            return res.status(500).json({
-                success: false,
-                message: error instanceof Error ? error.message : '未知错误'
+    try {
+        console.log('=== 开始执行检查任务 ===');
+        await checkAnimeUpdates();
+        console.log('=== 检查任务执行完成 ===');
+
+        const response = {
+            success: true,
+            message: '检查完成',
+            checkTime: new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+        };
+        console.log('返回响应:', response);
+        res.status(200).json(response);
+    } catch (error) {
+        console.error('执行过程中发生错误:', error);
+        if (error instanceof Error) {
+            console.error('错误详情:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
             });
         }
+        res.status(500).json({
+            success: false,
+            message: error instanceof Error ? error.message : '未知错误',
+            checkTime: new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+        });
     }
-
-    res.status(200).json({
-        success: true,
-        message: '服务正在运行',
-        lastCheck: new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
-    });
 } 

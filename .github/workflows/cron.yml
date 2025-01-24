@@ -1,0 +1,34 @@
+name: Scheduled Anime Check
+
+on:
+  schedule:
+    # UTC 时间每小时的 0 分和 30 分执行
+    # 对应北京时间每小时的 8 分和 38 分
+    - cron: '0,30 * * * *'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  check-anime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get current time
+        run: |
+          echo "UTC 时间：$(date '+%Y-%m-%d %H:%M:%S')"
+          echo "北京时间：$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
+        
+      - name: Trigger Vercel Function
+        id: trigger
+        run: |
+          echo "调用 Vercel Function..."
+          RESPONSE=$(curl -X POST ${{ secrets.VERCEL_FUNCTION_URL }} \
+            -H "Content-Type: application/json" \
+            -d '{"trigger":"github-action"}' -s)
+          echo "API 响应：$RESPONSE"
+          
+          # 检查响应中是否包含成功信息
+          if echo $RESPONSE | grep -q '"success":true'; then
+            echo "✅ 检查完成"
+          else
+            echo "❌ 检查失败"
+            exit 1
+          fi 
