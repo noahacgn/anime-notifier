@@ -18,8 +18,8 @@ function parseBeijingTime(timeStr: string): Date {
 async function getCheckTime(): Promise<Date> {
     // 获取当前北京时间
     const now = new Date();
-    // 检查最近30分钟的更新
-    return new Date(now.getTime() - 30 * 60 * 1000);
+    // 检查最近1小时的更新
+    return new Date(now.getTime() - 60 * 60 * 1000);
 }
 
 async function fetchAnimeList(config: ReturnType<typeof loadConfig>): Promise<ApiResponse> {

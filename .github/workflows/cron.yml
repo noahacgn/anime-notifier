@@ -2,9 +2,9 @@ name: Scheduled Anime Check
 
 on:
   schedule:
-    # UTC 时间每小时的 0 分和 30 分执行
-    # 对应北京时间每小时的 8 分和 38 分
-    - cron: '0,30 * * * *'
+    # UTC 时间每小时整点执行
+    # 对应北京时间每小时的 8 分执行
+    - cron: '0 * * * *'
   workflow_dispatch:  # 允许手动触发
 
 jobs:
