@@ -6,9 +6,23 @@ import { AnimeFile, ApiResponse } from './types';
 
 const CHECK_INTERVAL = 5 * 60 * 1000; // 5分钟检查一次
 
+// 时区相关的工具函数
+function convertToBeijingTime(date: Date): Date {
+    return new Date(date.getTime() + 8 * 60 * 60 * 1000);
+}
+
+function parseBeijingTime(timeStr: string): Date {
+    // 将字符串解析为 UTC 时间
+    const utcDate = new Date(timeStr);
+    // 转换为北京时间
+    return convertToBeijingTime(utcDate);
+}
+
 async function getCheckTime(): Promise<Date> {
+    // 获取当前北京时间
+    const beijingNow = convertToBeijingTime(new Date());
     // 检查最近30分钟的更新
-    return new Date(Date.now() - 30 * 60 * 1000);
+    return new Date(beijingNow.getTime() - 30 * 60 * 1000);
 }
 
 async function fetchAnimeList(config: ReturnType<typeof loadConfig>): Promise<ApiResponse> {
@@ -85,6 +99,7 @@ async function sendNotification(
                 </p>
                 ${animeFiles.map(file => {
             const downloadUrl = `${config.api.baseUrl}/${config.api.pathPrefix}/${file.name}`;
+            const fileTime = parseBeijingTime(file.modifiedTime);
             return `
                         <div style="background: #f8f9fa; border-radius: 5px; padding: 15px; margin-bottom: 15px;">
                             <h3 style="color: #2c3e50; margin: 0 0 10px 0;">
@@ -94,7 +109,8 @@ async function sendNotification(
                                 <strong>文件大小:</strong> ${(parseInt(file.size) / (1024 * 1024)).toFixed(2)} MB
                             </p>
                             <p style="color: #34495e; margin: 5px 0;">
-                                <strong>发布时间:</strong> ${new Date(file.modifiedTime).toLocaleString('zh-CN', {
+                                <strong>发布时间:</strong> ${fileTime.toLocaleString('zh-CN', {
+                timeZone: 'Asia/Shanghai',
                 year: 'numeric',
                 month: '2-digit',
                 day: '2-digit',
@@ -138,7 +154,7 @@ async function sendNotification(
 
 async function checkAnimeUpdates() {
     try {
-        console.log('开始检查动画更新...', new Date().toLocaleString());
+        console.log('开始检查动画更新...', convertToBeijingTime(new Date()).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }));
         const config = loadConfig();
         console.log('配置加载完成:', {
             animeNames: config.animeNames,
@@ -147,11 +163,12 @@ async function checkAnimeUpdates() {
         });
 
         const checkTime = await getCheckTime();
-        console.log('检查时间范围:', checkTime.toLocaleString(), '之后的更新');
+        console.log('检查时间范围:', checkTime.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }), '之后的更新');
 
         const animeList = await fetchAnimeList(config);
         const newAnimeFiles = animeList.files.filter(file => {
-            const isAfterCheckTime = new Date(file.modifiedTime) > checkTime;
+            const fileTime = parseBeijingTime(file.modifiedTime);
+            const isAfterCheckTime = fileTime > checkTime;
             const matchesWatchList = config.animeNames.some(animeName =>
                 file.name.toLowerCase().includes(animeName.toLowerCase())
             );
@@ -160,12 +177,16 @@ async function checkAnimeUpdates() {
 
         console.log('筛选结果:', {
             totalFiles: animeList.files.length,
-            newFiles: newAnimeFiles.length
+            newFiles: newAnimeFiles.length,
+            checkTime: checkTime.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
         });
 
         if (newAnimeFiles.length > 0) {
             console.log(`发现 ${newAnimeFiles.length} 个新动画更新，正在发送通知...`);
-            console.log('新动画列表:', newAnimeFiles.map(f => f.name));
+            console.log('新动画列表:', newAnimeFiles.map(f => ({
+                name: f.name,
+                time: parseBeijingTime(f.modifiedTime).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+            })));
             await sendNotification(newAnimeFiles, config);
             console.log('通知发送完成');
         } else {
