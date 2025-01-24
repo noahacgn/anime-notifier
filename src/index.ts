@@ -8,21 +8,41 @@ const CHECK_INTERVAL = 5 * 60 * 1000; // 5分钟检查一次
 
 // 时区相关的工具函数
 function convertToBeijingTime(date: Date): Date {
-    return new Date(date.getTime() + 8 * 60 * 60 * 1000);
+    // 不需要加8小时，因为 API 返回的已经是北京时间
+    return date;
 }
 
 function parseBeijingTime(timeStr: string): Date {
-    // 将字符串解析为 UTC 时间
-    const utcDate = new Date(timeStr);
-    // 转换为北京时间
-    return convertToBeijingTime(utcDate);
+    // API 返回的时间已经是北京时间，直接解析
+    return new Date(timeStr);
 }
 
 async function getCheckTime(): Promise<Date> {
     // 获取当前北京时间
-    const beijingNow = convertToBeijingTime(new Date());
+    const now = new Date();
     // 检查最近30分钟的更新
-    return new Date(beijingNow.getTime() - 30 * 60 * 1000);
+    return new Date(now.getTime() - 30 * 60 * 1000);
+}
+
+// 定时任务相关
+let checkInterval: NodeJS.Timeout | null = null;
+
+function startScheduledCheck() {
+    if (checkInterval) {
+        clearInterval(checkInterval);
+    }
+
+    // 立即执行一次
+    checkAnimeUpdates().catch(error => {
+        console.error('定时任务执行失败:', error);
+    });
+
+    // 设置定时任务，每30分钟执行一次
+    checkInterval = setInterval(() => {
+        checkAnimeUpdates().catch(error => {
+            console.error('定时任务执行失败:', error);
+        });
+    }, 30 * 60 * 1000);
 }
 
 async function fetchAnimeList(config: ReturnType<typeof loadConfig>): Promise<ApiResponse> {
@@ -203,13 +223,6 @@ async function checkAnimeUpdates() {
     }
 }
 
-// 本地开发模式
-if (process.env.NODE_ENV !== 'production') {
-    console.log('启动本地开发模式，每5分钟检查一次更新...');
-    checkAnimeUpdates(); // 立即执行一次
-    setInterval(checkAnimeUpdates, CHECK_INTERVAL);
-}
-
 // Vercel Serverless Function
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('收到请求:', {
@@ -217,46 +230,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         url: req.url,
         headers: req.headers,
         body: req.body,
-        time: new Date().toISOString()
+        time: new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
     });
 
-    // 只处理 POST 请求，避免探活触发更新检查
-    if (req.method !== 'POST') {
-        console.log('非POST请求，拒绝处理');
-        return res.status(405).json({
-            success: false,
-            message: '只支持 POST 请求'
-        });
+    // 启动定时任务
+    if (!checkInterval) {
+        console.log('启动定时任务...');
+        startScheduledCheck();
+        console.log('定时任务已启动');
     }
 
-    try {
-        console.log('=== 开始执行检查任务 ===');
-        await checkAnimeUpdates();
-        console.log('=== 检查任务执行完成 ===');
-
-        const response = {
-            success: true,
-            message: '检查完成',
-            timestamp: new Date().toISOString()
-        };
-        console.log('返回响应:', response);
-        res.status(200).json(response);
-    } catch (error) {
-        console.error('执行过程中发生错误:', error);
-        if (error instanceof Error) {
-            console.error('错误详情:', {
-                name: error.name,
-                message: error.message,
-                stack: error.stack,
-                time: new Date().toISOString()
+    // 如果是 POST 请求，立即执行一次检查
+    if (req.method === 'POST') {
+        try {
+            console.log('=== 开始执行检查任务 ===');
+            await checkAnimeUpdates();
+            console.log('=== 检查任务执行完成 ===');
+        } catch (error) {
+            console.error('执行过程中发生错误:', error);
+            if (error instanceof Error) {
+                console.error('错误详情:', {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
+            }
+            return res.status(500).json({
+                success: false,
+                message: error instanceof Error ? error.message : '未知错误'
             });
         }
-        const errorResponse = {
-            success: false,
-            message: error instanceof Error ? error.message : '未知错误',
-            timestamp: new Date().toISOString()
-        };
-        console.log('返回错误响应:', errorResponse);
-        res.status(500).json(errorResponse);
     }
+
+    res.status(200).json({
+        success: true,
+        message: '服务正在运行',
+        lastCheck: new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+    });
 } 
